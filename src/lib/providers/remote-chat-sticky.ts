@@ -46,3 +46,20 @@ export function clearStickyRemoteChat(
 }
 
 
+export function isProbeChatRequest(messages: any[]): boolean {
+  if (!messages || messages.length === 0) return true
+  
+  const lastMsg = messages[messages.length - 1]
+  if (lastMsg && lastMsg.role === 'user') {
+    const text = typeof lastMsg.content === 'string' ? lastMsg.content : ''
+    const t = text.trim().toLowerCase()
+    
+    // LibreChat and OpenRouter typically probe with these
+    if (t === 'hi' || t === 'test' || t.startsWith('1+1') || t === 'hello' || t === 'ping') {
+      return true
+    }
+  }
+  
+  return false
+}
+
