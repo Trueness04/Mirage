@@ -8,13 +8,13 @@ const sticky = new Map<string, { id: string; at: number }>()
 /** Drop sticky entries older than this (ms). */
 const STICKY_TTL_MS = 45 * 60_000
 
-export function stickyRemoteKey(providerKey: string, sessionId: string): string {
-  return `${providerKey}:${sessionId}`
+export function stickyRemoteKey(providerKey: string, sessionId?: string): string {
+  return `${providerKey}:${sessionId || 'default'}`
 }
 
 export function getStickyRemoteChat(
   providerKey: string,
-  sessionId: string,
+  sessionId?: string,
 ): string | null {
   const key = stickyRemoteKey(providerKey, sessionId)
   const row = sticky.get(key)
@@ -28,7 +28,7 @@ export function getStickyRemoteChat(
 
 export function setStickyRemoteChat(
   providerKey: string,
-  sessionId: string,
+  sessionId: string | undefined,
   remoteChatId: string,
 ): void {
   if (!remoteChatId) return
@@ -40,26 +40,24 @@ export function setStickyRemoteChat(
 
 export function clearStickyRemoteChat(
   providerKey: string,
-  sessionId: string,
+  sessionId?: string,
 ): void {
   sticky.delete(stickyRemoteKey(providerKey, sessionId))
 }
 
-
 export function isProbeChatRequest(messages: any[]): boolean {
   if (!messages || messages.length === 0) return true
-  
+
   const lastMsg = messages[messages.length - 1]
   if (lastMsg && lastMsg.role === 'user') {
     const text = typeof lastMsg.content === 'string' ? lastMsg.content : ''
     const t = text.trim().toLowerCase()
-    
+
     // LibreChat and OpenRouter typically probe with these
     if (t === 'hi' || t === 'test' || t.startsWith('1+1') || t === 'hello' || t === 'ping') {
       return true
     }
   }
-  
+
   return false
 }
-

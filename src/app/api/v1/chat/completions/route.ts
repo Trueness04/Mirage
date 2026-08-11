@@ -40,6 +40,11 @@ import {
   isChatQwenHost,
   isChatQwenProviderKey,
 } from '@/lib/providers/qwen-intl'
+import { responseCache } from '@/lib/providers/response-cache'
+import { reorderForRoundRobin } from '@/lib/providers/session-router'
+import { rateLimiter } from '@/lib/providers/rate-limiter'
+import { getFallbackCandidates } from '@/lib/providers/fallback-router'
+
 
 /**
  * POST /v1/chat/completions (also rewritten from /v1/chat/completions)
@@ -121,6 +126,31 @@ export async function POST(req: Request) {
       )
     }
   }
+
+  // Check rate limiting if rateLimitRpm is configured (> 0)
+  if (keyRecord.rateLimitRpm > 0) {
+    const rl = rateLimiter.check(keyRecord.id, keyRecord.rateLimitRpm)
+    if (!rl.allowed) {
+      const msg = `Rate limit exceeded. Maximum ${keyRecord.rateLimitRpm} RPM allowed for this API key.`
+      await logRequest({
+        apiKeyId: keyRecord.id,
+        status: 429,
+        stream: false,
+        durationMs: elapsed(),
+        errorMessage: msg,
+      })
+      return NextResponse.json(
+        { error: { message: msg, type: 'rate_limit_error' } },
+        {
+          status: 429,
+          headers: {
+            'Retry-After': String(Math.ceil(rl.resetMs / 1000)),
+          },
+        },
+      )
+    }
+  }
+
 
   const body = (await req.json().catch(() => ({}))) as OpenAIChatRequest
   if (!body.model || !Array.isArray(body.messages) || body.messages.length === 0) {
@@ -269,6 +299,22 @@ export async function POST(req: Request) {
     )
   }
 
+  // Check in-memory response cache for non-stream requests
+  if (!body.stream) {
+    const cachedResp = responseCache.get(providerKey, body.model, body.messages)
+    if (cachedResp) {
+      await logRequest({
+        apiKeyId: keyRecord.id,
+        providerId: provider.id,
+        model: body.model,
+        status: 200,
+        stream: false,
+        durationMs: elapsed(),
+      })
+      return NextResponse.json(cachedResp)
+    }
+  }
+
   // Find sessions — primary (priority 0) first, then fallback (1+),
   // then most recently refreshed within the same priority.
   const scopedSessionIds = safeParseSessionIds(keyRecord.sessionIds)
@@ -286,7 +332,7 @@ export async function POST(req: Request) {
   // Kimi is bearer-only: cookies without access/refresh cannot chat.
   // Arena/Claude viaBrowser can still work with a device-bound session when
   // the live tab is logged in, but prefer jars with real auth material.
-  const sessions = sessionsRaw
+  const filteredSessions = sessionsRaw
     .filter((s) => {
       const hasToken = Boolean(s.accessToken?.trim() || s.refreshToken?.trim())
       if (providerKey === 'kimi') return hasToken
@@ -315,7 +361,16 @@ export async function POST(req: Request) {
       return 0
     })
 
+  // Apply round-robin & least-used distribution across available sessions
+  const sessions = reorderForRoundRobin(providerKey, filteredSessions)
+
   if (sessions.length === 0) {
+    // Attempt cross-provider fallback before giving up
+    const fbResp = await attemptCrossProviderFallback(
+      providerKey, body, keyRecord.id, elapsed,
+    )
+    if (fbResp) return fbResp
+
     const msg =
       providerKey === 'kimi'
         ? `No usable Kimi session (need access_token or refresh_token). Open www.kimi.com, send one message, then Capture with the Mirage extension.`
@@ -791,6 +846,11 @@ export async function POST(req: Request) {
         lastRemoteChatId,
         lastEphemeralRemote,
       )
+
+      if (!body.stream && parsed) {
+        responseCache.set(providerKey, body.model, body.messages, parsed)
+      }
+
       return NextResponse.json(parsed)
     } catch (e) {
       const msg = (e as Error).message || String(e)
@@ -815,6 +875,12 @@ export async function POST(req: Request) {
       continue
     }
   }
+
+  // Attempt cross-provider fallback before returning error
+  const fbResp = await attemptCrossProviderFallback(
+    providerKey, body, keyRecord.id, elapsed,
+  )
+  if (fbResp) return fbResp
 
   const failStatus = lastErr == null ? 500 : lastErr.status
   const failMessage =
@@ -841,6 +907,98 @@ export async function POST(req: Request) {
     },
     { status: failStatus },
   )
+}
+
+/**
+ * Cross-Provider Fallback — shared helper.
+ * Tries healthy alternative providers when the primary is down or out of sessions.
+ * Returns a NextResponse if a fallback succeeds, or null to let the caller return its own error.
+ */
+async function attemptCrossProviderFallback(
+  primaryProviderKey: string,
+  body: OpenAIChatRequest,
+  apiKeyId: string,
+  elapsed: () => number,
+): Promise<Response | null> {
+  try {
+    const fallbacks = await getFallbackCandidates(primaryProviderKey)
+    for (const fb of fallbacks) {
+      console.log(
+        `[cross-provider-fallback] Primary ${primaryProviderKey} unavailable. Trying: ${fb.providerKey}/${fb.modelKey}`,
+      )
+      const fbProvider = await db.provider.findUnique({
+        where: { key: fb.providerKey },
+      })
+      if (!fbProvider) continue
+
+      const fbSessionsRaw = await db.providerSession.findMany({
+        where: {
+          providerId: fbProvider.id,
+          status: 'active',
+        },
+        orderBy: [{ priority: 'asc' }, { lastRefreshAt: 'desc' }],
+      })
+      const fbSessions = reorderForRoundRobin(fb.providerKey, fbSessionsRaw)
+      if (fbSessions.length === 0) continue
+
+      const fbAdapter = getAdapter(fb.providerKey)
+      if (!fbAdapter) continue
+
+      for (const session of fbSessions) {
+        const loaded = await loadSessionContext(session.id)
+        if (!loaded) continue
+        const { ctx } = loaded
+
+        try {
+          const reqSpec = await fbAdapter.buildUpstreamRequest(
+            { ...body, model: fb.modelKey },
+            ctx,
+          )
+          const upstreamResp = await fetch(reqSpec.url, {
+            method: reqSpec.method || 'POST',
+            headers: reqSpec.headers,
+            body: reqSpec.body as BodyInit | null | undefined,
+          })
+          if (!upstreamResp.ok) continue
+
+          const parsed = await fbAdapter.parseUpstreamResponse(
+            upstreamResp,
+            ctx,
+            fb.modelKey,
+          )
+
+          if (!body.stream && parsed) {
+            responseCache.set(primaryProviderKey, body.model, body.messages, parsed)
+          }
+
+          await logRequest({
+            apiKeyId,
+            providerId: fbProvider.id,
+            model: `${body.model} (fallback:${fb.providerKey})`,
+            status: 200,
+            stream: false,
+            durationMs: elapsed(),
+          })
+
+          return NextResponse.json(parsed, {
+            headers: {
+              'X-Mirage-Fallback-From': primaryProviderKey,
+              'X-Mirage-Fallback-To': fb.providerKey,
+            },
+          })
+        } catch (fbErr) {
+          console.warn(
+            `[fallback] ${fb.providerKey} session attempt failed:`,
+            (fbErr as Error).message,
+          )
+          continue
+        }
+      }
+    }
+  } catch (fallbackError) {
+    console.warn('[cross-provider-fallback] Error during fallback execution:', fallbackError)
+  }
+  return null
 }
 
 async function streamResponse(

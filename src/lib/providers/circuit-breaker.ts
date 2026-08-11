@@ -1,5 +1,5 @@
-const BACKOFF_MS = [5, 25, 120, 360].map((m) => m * 60_000)
-const HALF_OPEN_PROBE_INTERVAL_MS = 15_000
+const BACKOFF_MS = [1, 5, 15, 30].map((m) => m * 60_000) // max 30 min
+const HALF_OPEN_PROBE_INTERVAL_MS = 60_000 // 1 min between half-open probes
 
 export class CircuitBreaker {
   private fails = 0
@@ -15,6 +15,9 @@ export class CircuitBreaker {
     const idx = Math.min(this.fails, BACKOFF_MS.length - 1)
     this.fails += 1
     this.downUntil = Date.now() + BACKOFF_MS[idx]
+    console.warn(
+      `[breaker] fail #${this.fails}, down for ${Math.ceil(BACKOFF_MS[idx] / 1000)}s`,
+    )
   }
 
   canAttempt(): boolean {
@@ -33,5 +36,17 @@ export class CircuitBreaker {
 
   msUntilRetry(): number {
     return Math.max(0, this.downUntil - Date.now())
+  }
+
+  /** Force-reset from admin endpoint — immediately re-opens the breaker. */
+  forceReset() {
+    this.fails = 0
+    this.downUntil = 0
+    this.lastProbe = 0
+    console.log('[breaker] force reset')
+  }
+
+  getFailCount(): number {
+    return this.fails
   }
 }

@@ -19,6 +19,7 @@ export async function loadSessionContext(
 
   return {
     ctx: {
+      id: session.id,
       providerId: session.providerId,
       providerKey: session.provider.key,
       cookies,

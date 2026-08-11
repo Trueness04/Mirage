@@ -12,6 +12,8 @@ import { loadSessionContext } from '@/lib/providers/session-loader'
 
 const TICK_MS = 60 * 1000
 /** Refresh when fewer than this many seconds remain (or 10% of TTL). */
+import { startSelfHealing } from './self-healing'
+
 const REFRESH_SKEW_SEC = 60
 
 const globalSched = globalThis as unknown as {
@@ -19,6 +21,7 @@ const globalSched = globalThis as unknown as {
 }
 
 export function ensureSchedulerStarted() {
+  startSelfHealing()
   if (globalSched.__mirageRefreshTimer) return
   globalSched.__mirageRefreshTimer = setInterval(() => {
     tick().catch((e) => {

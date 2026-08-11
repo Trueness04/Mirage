@@ -154,6 +154,7 @@ export interface ClearRemoteChatsResult {
 }
 
 export interface AdapterSessionContext {
+  id?: string
   providerId: string
   providerKey: string
   cookies: CookieJarEntry[]

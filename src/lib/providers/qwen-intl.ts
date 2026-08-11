@@ -285,7 +285,7 @@ export async function buildQwenIntlUpstream(
   let cookies = session.cookies
   try {
     cookies = await ensureQwenWafCookies({
-      sessionId: session.id,
+      sessionId: session.id || '',
       deviceId: session.deviceId,
       cookies,
     })
