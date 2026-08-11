@@ -1,0 +1,37 @@
+# Dependencies
+node_modules/
+.bun/
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+*.log
+dev.log
+server.log
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+
+# Database
+*.db
+*.db-journal
+prisma/*.db
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Build artifacts
+dist/
+coverage/
+
+# Local reverse-engineering / probe scratch scripts
+scripts/tmp-*
+
+# Local chat dumps / support transcripts (often contain cookies/JWTs)
+chat-*.txt

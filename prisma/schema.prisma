@@ -1,0 +1,185 @@
+// Mirage - Reverse Proxy Schema
+// Provider-agnostic architecture for harvesting AI web sessions
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ─── Providers (extensible registry of supported AI sites) ───────────────
+// One row per provider type (kimi, zai, deepseek, claude, gemini, ...)
+// Allows new providers to be added at runtime without code changes.
+model Provider {
+  id              String   @id @default(cuid())
+  key             String   @unique // e.g. "kimi", "claude", "zai"
+  displayName     String   // e.g. "Kimi (Moonshot)"
+  websiteUrl      String   // e.g. "https://www.kimi.com"
+  authType        String   @default("cookie") // "cookie" | "bearer" | "mixed"
+  // adapterKind: "builtin" | "cookie" | "openai_compat"
+  // openai_compat uses apiBaseUrl + captured bearer for free OpenAI-style web APIs
+  adapterKind     String   @default("cookie")
+  apiBaseUrl      String?  // e.g. "https://free-ai.example/v1"
+  refreshEndpoint String?  // e.g. "https://www.kimi.com/api/auth/refresh"
+  refreshMethod   String   @default("POST")
+  refreshTtlSec   Int      @default(900)     // access_token lifetime (~15min for kimi)
+  sessionTtlSec   Int      @default(2592000)  // refresh_token lifetime (~30 days)
+  pingIntervalSec Int      @default(600)      // keep-alive interval (10 min default)
+  detectorPattern String?  // regex matching URLs that indicate an authenticated session
+  enabled         Boolean  @default(true)
+  iconUrl         String?
+  // Set when dashboard Connects a platform so extensions capture immediately
+  captureRequestedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  sessions        ProviderSession[]
+  models          ProviderModel[]
+}
+
+// Live-imported catalog per provider (populated on Connect from that site's API;
+// exposed as provider/modelKey via GET /v1/models). Never seed hardcoded rows.
+model ProviderModel {
+  id           String   @id @default(cuid())
+  providerId   String
+  // Local id segment; clients call Mirage as "{provider.key}/{modelKey}"
+  modelKey     String
+  // Human label from the provider's live catalog
+  displayName  String
+  // Id sent upstream (from live import); falls back to modelKey when null
+  upstreamName String?
+  contextWindow Int     @default(128000)
+  isDefault    Boolean  @default(false)
+  supportsStream Boolean @default(true)
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  provider     Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, modelKey])
+}
+
+// ─── Sessions (per-provider captured credentials) ──────────────────────
+// One login capture per (provider, device). Typical setup:
+//   priority=0  primary  (e.g. Chrome)
+//   priority=1  fallback (e.g. Edge on the same machine)
+// Chat routing tries primary first, then fallback on 401/403/5xx.
+model ProviderSession {
+  id            String   @id @default(cuid())
+  providerId    String
+  label         String?  // user-assigned nickname e.g. "Personal Kimi"
+  deviceId      String?  // ExtensionDevice.deviceId that captured this session
+  browser       String?  // chrome | edge | firefox | other
+  // 0 = primary, 1 = fallback (lower runs first)
+  priority      Int      @default(0)
+  // JSON-encoded cookie jar captured by the extension (array of {name, value, domain, path, expires, ...})
+  cookies       String   @default("[]")
+  accessToken   String?  // short-lived bearer token (if applicable)
+  refreshToken  String?  // long-lived refresh token (if applicable)
+  expiresAt     DateTime? // when access token expires
+  refreshExpiresAt DateTime? // when refresh token expires
+  lastRefreshAt DateTime?
+  lastPingAt    DateTime?
+  status        String   @default("active") // active | refreshing | expired | error
+  errorMessage  String?
+  // Stats
+  requestCount Int      @default(0)
+  createdAt    DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  provider      Provider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@index([providerId, status])
+  @@index([providerId, deviceId])
+  @@index([providerId, priority])
+}
+
+// ─── API Keys (OpenAI-compatible client keys) ──────────────────────────
+// Users generate these keys to plug into any OpenAI-compatible client.
+// Each key is associated with a specific session+model so OmniRoute can
+// route the request to the right upstream provider.
+model ApiKey {
+  id           String   @id @default(cuid())
+  keyPrefix    String   // first 8 chars shown in UI e.g. "sk-or-1a2b"
+  keyHash      String   @unique // SHA-256 of full key for verification
+  label        String?  // user-given label
+  // Optional scoping: if null, allows access to all enabled sessions
+  sessionIds   String   @default("[]") // JSON array of ProviderSession.id
+  // 0 = off (default). Set >0 only if you intentionally want Mirage-side RPM.
+  rateLimitRpm Int      @default(0)
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  logs         RequestLog[]
+}
+
+// ─── Extension Registration ────────────────────────────────────────────
+// Each browser install (Chrome, Edge, …) registers as its own device so
+// the same provider can keep a primary + fallback login side by side.
+model ExtensionDevice {
+  id           String   @id @default(cuid())
+  deviceId     String   @unique // generated client-side on install
+  displayName  String?  // e.g. "MacBook Pro — Chrome"
+  browser      String?  // chrome | edge | firefox | other
+  // sha256 hex of deviceSecret issued at register (plaintext never stored)
+  secretHash   String?
+  version      String?
+  lastSeenAt   DateTime?
+  enabled      Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+// ─── Extension tool / capture jobs (server → device) ───────────────────
+model ExtensionToolJob {
+  id          String   @id @default(cuid())
+  deviceId    String
+  status      String   @default("pending") // pending | running | done | error
+  toolName    String   // mirage_browser_fetch | mirage_read_tab | mirage_list_tabs | mirage_test_provider
+  arguments   String   @default("{}") // JSON
+  result      String?  // JSON
+  error       String?
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  @@index([deviceId, status])
+  @@index([status, createdAt])
+}
+
+// ─── Request Logs (for the /v1/* endpoints) ───────────────────────────
+model RequestLog {
+  id           String   @id @default(cuid())
+  apiKeyId     String?
+  providerId   String?
+  sessionLabel String?
+  model        String?
+  endpoint     String   // e.g. "/v1/chat/completions"
+  method       String
+  status       Int      // HTTP status code returned to client
+  upstreamStatus Int?   // HTTP status returned by AI website
+  durationMs   Int?
+  stream       Boolean  @default(false)
+  tokensIn     Int?
+  tokensOut    Int?
+  errorMessage String?
+  // SHA of client IP for abuse detection (not full IP)
+  clientIpHash String?
+  createdAt    DateTime @default(now())
+
+  apiKey       ApiKey?  @relation(fields: [apiKeyId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([apiKeyId])
+}
+
+// ─── App settings (flags like skipBuiltinSeed after wipe) ─────────────
+model AppSetting {
+  key       String   @id
+  value     String
+  updatedAt DateTime @updatedAt
+}
