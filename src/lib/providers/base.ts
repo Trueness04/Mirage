@@ -164,6 +164,8 @@ export interface AdapterSessionContext {
   refreshExpiresAt?: Date
   /** Online Mirage extension device that captured this session (for browser_fetch). */
   deviceId?: string
+  /** Real browser User-Agent captured during session import. */
+  userAgent?: string
 }
 
 export interface AdapterModelSpec {
@@ -253,4 +255,33 @@ export const BROWSER_HEADERS: Record<string, string> = {
   'Sec-Fetch-Site': 'same-origin',
   Origin: '',
   Referer: '',
+}
+
+/**
+ * Build browser-like headers using the session's real User-Agent if available.
+ * Falls back to the default BROWSER_HEADERS when no captured UA exists.
+ */
+export function browserHeaders(session?: AdapterSessionContext): Record<string, string> {
+  if (!session?.userAgent) return { ...BROWSER_HEADERS }
+
+  const ua = session.userAgent
+  const headers = { ...BROWSER_HEADERS, 'User-Agent': ua }
+
+  // Derive Sec-Ch-Ua and Sec-Ch-Ua-Platform from the real User-Agent
+  const chromeMatch = ua.match(/Chrome\/(\d+)/)
+  if (chromeMatch) {
+    const ver = chromeMatch[1]
+    headers['Sec-Ch-Ua'] =
+      `"Chromium";v="${ver}", "Google Chrome";v="${ver}", "Not_A Brand";v="24"`
+  }
+
+  if (/Windows/i.test(ua)) {
+    headers['Sec-Ch-Ua-Platform'] = '"Windows"'
+  } else if (/Mac/i.test(ua)) {
+    headers['Sec-Ch-Ua-Platform'] = '"macOS"'
+  } else if (/Linux/i.test(ua)) {
+    headers['Sec-Ch-Ua-Platform'] = '"Linux"'
+  }
+
+  return headers
 }

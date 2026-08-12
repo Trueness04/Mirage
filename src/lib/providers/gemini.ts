@@ -11,7 +11,7 @@
 import { createHash } from 'crypto'
 import { db } from '@/lib/db'
 import {
-  BROWSER_HEADERS,
+  browserHeaders,
   type AdapterModelSpec,
   type AdapterSessionContext,
   type ChatCompletionResponse,
@@ -113,7 +113,7 @@ export const geminiAdapter: ProviderAdapter = {
     form.set('at', meta.snlm0e)
 
     const headers: Record<string, string> = {
-      ...BROWSER_HEADERS,
+      ...browserHeaders(session),
       Accept: '*/*',
       'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
       Origin: GEMINI,
@@ -231,7 +231,7 @@ export const geminiAdapter: ProviderAdapter = {
         await fetch(ROTATE, {
           method: 'POST',
           headers: {
-            ...BROWSER_HEADERS,
+            ...browserHeaders(session),
             Cookie: cookieHeader(session.cookies),
             Origin: 'https://accounts.google.com',
             'Content-Type': 'application/json',
@@ -314,7 +314,7 @@ async function fetchGeminiMeta(cookies: CookieJarEntry[]): Promise<GeminiMeta> {
   try {
     resp = await fetch(`${GEMINI}/app`, {
       headers: {
-        ...BROWSER_HEADERS,
+        ...browserHeaders(),
         Accept: 'text/html',
         Cookie: cookieHeader(cookies),
         Referer: `${GEMINI}/`,

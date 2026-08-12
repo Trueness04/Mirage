@@ -3,7 +3,7 @@
  * Checks website reachability and optional OpenAI-compatible /models + /chat/completions.
  */
 
-import { BROWSER_HEADERS } from './base'
+import { browserHeaders } from './base'
 
 export interface ProbeResult {
   ok: boolean
@@ -55,7 +55,7 @@ export async function probePlatform(opts: {
   try {
     const resp = await fetch(opts.websiteUrl, {
       method: 'GET',
-      headers: { ...BROWSER_HEADERS, Accept: 'text/html,application/json' },
+      headers: { ...browserHeaders(), Accept: 'text/html,application/json' },
       redirect: 'follow',
       signal: timeoutSignal(12_000),
     })
@@ -93,7 +93,7 @@ export async function probePlatform(opts: {
     try {
       const resp = await fetch(`${base}/models`, {
         headers: {
-          ...BROWSER_HEADERS,
+          ...browserHeaders(),
           Accept: 'application/json',
         },
         signal: timeoutSignal(10_000),
@@ -157,7 +157,7 @@ export async function probePlatform(opts: {
       const resp = await fetch(`${base}/chat/completions`, {
         method: 'POST',
         headers: {
-          ...BROWSER_HEADERS,
+          ...browserHeaders(),
           Accept: 'application/json',
           'Content-Type': 'application/json',
         },

@@ -16,7 +16,7 @@
 import { createHmac } from 'node:crypto'
 import { db } from '@/lib/db'
 import {
-  BROWSER_HEADERS,
+  browserHeaders,
   type AdapterModelSpec,
   type AdapterSessionContext,
   type ChatCompletionResponse,
@@ -37,6 +37,7 @@ import {
   stripMirageCookies,
   ZAI_CAPTCHA_COOKIE,
 } from './zai-captcha'
+import { notifyCaptchaRequired } from '@/lib/notify'
 
 const ZAI = 'https://chat.z.ai'
 const ZAI_CHAT = `${ZAI}/api/v2/chat/completions`
@@ -45,10 +46,6 @@ const ZAI_MODELS = `${ZAI}/api/models`
 
 /** Matches current chat.z.ai SPA (avoids 426 "client version outdated"). */
 const ZAI_FE_VERSION = 'prod-fe-1.1.69'
-const ZAI_UA =
-  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36'
-const ZAI_SEC_CH_UA =
-  '"Chromium";v="149", "Not=A?Brand";v="24", "Google Chrome";v="149"'
 
 const ZAI_CAPTCHA_HINT =
   'Z.AI captcha rejected (FRONTEND_CAPTCHA_REQUIRED). Keep the Mirage extension ' +
@@ -147,6 +144,7 @@ export const zaiAdapter: ProviderAdapter = {
     const timestamp = String(Date.now())
     const requestId = crypto.randomUUID()
     const signature = computeZaiSignature(requestId, timestamp, userId)
+    const sessionHeaders = browserHeaders(session)
     const qs = new URLSearchParams({
       timestamp,
       requestId,
@@ -154,7 +152,7 @@ export const zaiAdapter: ProviderAdapter = {
       version: '0.0.1',
       platform: 'web',
       token: token || '',
-      user_agent: ZAI_UA,
+      user_agent: sessionHeaders['User-Agent'] || '',
       language: 'en-US',
       languages: 'en-US,en',
       timezone: 'UTC',
@@ -168,11 +166,7 @@ export const zaiAdapter: ProviderAdapter = {
     })
 
     const headers: Record<string, string> = {
-      ...BROWSER_HEADERS,
-      'User-Agent': ZAI_UA,
-      'Sec-Ch-Ua': ZAI_SEC_CH_UA,
-      'Sec-Ch-Ua-Mobile': '?0',
-      'Sec-Ch-Ua-Platform': '"Windows"',
+      ...sessionHeaders,
       'Content-Type': 'application/json',
       Accept: 'text/event-stream, application/json',
       Origin: ZAI,
@@ -296,6 +290,9 @@ export const zaiAdapter: ProviderAdapter = {
             const j = JSON.parse(data) as Record<string, unknown>
             const upstreamErr = extractZaiError(j)
             if (upstreamErr) {
+              if (/CAPTCHA/i.test(upstreamErr)) {
+                notifyCaptchaRequired('Z.AI', ZAI_CAPTCHA_HINT)
+              }
               throw new Error(
                 /CAPTCHA/i.test(upstreamErr)
                   ? ZAI_CAPTCHA_HINT
@@ -348,7 +345,7 @@ export const zaiAdapter: ProviderAdapter = {
     try {
       const token = extractZaiToken(session)
       const headers: Record<string, string> = {
-        ...BROWSER_HEADERS,
+        ...browserHeaders(session),
         Cookie: cookieHeader(session.cookies),
         Origin: ZAI,
         Referer: `${ZAI}/`,
@@ -406,7 +403,7 @@ export const zaiAdapter: ProviderAdapter = {
         return { valid: false, reason: 'No token or cookies captured' }
       }
       const headers: Record<string, string> = {
-        ...BROWSER_HEADERS,
+        ...browserHeaders(session),
         Cookie: cookieHeader(session.cookies),
         Origin: ZAI,
         Referer: `${ZAI}/`,
@@ -636,6 +633,9 @@ function collectZaiSse(raw: string): { content: string; reasoning: string } {
       const j = JSON.parse(data) as Record<string, unknown>
       const err = extractZaiError(j)
       if (err) {
+        if (/CAPTCHA/i.test(err)) {
+          notifyCaptchaRequired('Z.AI', ZAI_CAPTCHA_HINT)
+        }
         throw new Error(/CAPTCHA/i.test(err) ? ZAI_CAPTCHA_HINT : `Z.AI: ${err}`)
       }
       const d = extractZaiDelta(j)

@@ -44,6 +44,7 @@ import { responseCache } from '@/lib/providers/response-cache'
 import { reorderForRoundRobin } from '@/lib/providers/session-router'
 import { rateLimiter } from '@/lib/providers/rate-limiter'
 import { getFallbackCandidates } from '@/lib/providers/fallback-router'
+import { notifySessionError } from '@/lib/notify'
 
 
 /**
@@ -682,6 +683,7 @@ export async function POST(req: Request) {
                 text,
               ),
             }
+            notifySessionError(providerKey, lastErr.message.slice(0, 200))
             await db.providerSession.update({
               where: { id: session.id },
               data: {
@@ -727,6 +729,7 @@ export async function POST(req: Request) {
               text,
             )
           ) {
+            notifySessionError(providerKey, lastErr.message.slice(0, 200))
             await db.providerSession.update({
               where: { id: session.id },
               data: {

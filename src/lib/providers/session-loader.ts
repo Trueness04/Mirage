@@ -28,6 +28,7 @@ export async function loadSessionContext(
       expiresAt: session.expiresAt ?? undefined,
       refreshExpiresAt: session.refreshExpiresAt ?? undefined,
       deviceId: session.deviceId ?? undefined,
+      userAgent: session.userAgent ?? undefined,
     },
     providerKey: session.provider.key,
   }

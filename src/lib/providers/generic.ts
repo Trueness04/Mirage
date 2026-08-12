@@ -9,7 +9,7 @@
  */
 
 import {
-  BROWSER_HEADERS,
+  browserHeaders,
   type AdapterModelSpec,
   type AdapterSessionContext,
   type ChatCompletionResponse,
@@ -103,7 +103,7 @@ export function createGenericAdapter(cfg: GenericAdapterConfig): ProviderAdapter
 
       const chatBase = rewriteCompatApiBase(cfg.key, apiBase)
       const headers: Record<string, string> = {
-        ...BROWSER_HEADERS,
+        ...browserHeaders(session),
         'Content-Type': 'application/json',
         Accept: 'application/json',
         Origin: cfg.websiteUrl,
@@ -221,7 +221,7 @@ export function createGenericAdapter(cfg: GenericAdapterConfig): ProviderAdapter
         if (kind === 'openai_compat' && apiBase) {
           const token = extractBearer(session)
           const headers: Record<string, string> = {
-            ...BROWSER_HEADERS,
+            ...browserHeaders(session),
             Cookie: cookieHeader(session.cookies),
             Origin: cfg.websiteUrl,
             Referer: cfg.websiteUrl + '/',
@@ -251,7 +251,7 @@ export function createGenericAdapter(cfg: GenericAdapterConfig): ProviderAdapter
           try {
             const resp = await fetch(validationUrl, {
               headers: {
-                ...BROWSER_HEADERS,
+                ...browserHeaders(session),
                 Cookie: cookieHeader(session.cookies),
                 Origin: cfg.websiteUrl,
                 Referer: cfg.websiteUrl + '/',
@@ -284,7 +284,7 @@ export function createGenericAdapter(cfg: GenericAdapterConfig): ProviderAdapter
 
         const resp = await fetch(validationUrl, {
           headers: {
-            ...BROWSER_HEADERS,
+            ...browserHeaders(session),
             Cookie: cookieHeader(session.cookies),
             Origin: cfg.websiteUrl,
             Referer: cfg.websiteUrl + '/',
@@ -330,7 +330,7 @@ export function createGenericAdapter(cfg: GenericAdapterConfig): ProviderAdapter
             return { valid: false, reason: 'No token or cookies captured' }
           }
           const headers: Record<string, string> = {
-            ...BROWSER_HEADERS,
+            ...browserHeaders(session),
             Cookie: cookieHeader(session.cookies),
             Accept: 'application/json',
             Origin: cfg.websiteUrl,
@@ -382,7 +382,7 @@ export function createGenericAdapter(cfg: GenericAdapterConfig): ProviderAdapter
         // Try live model catalogs on the website origin before cookie keep-alive.
         const token = extractBearer(session)
         const catalogHeaders: Record<string, string> = {
-          ...BROWSER_HEADERS,
+          ...browserHeaders(session),
           Cookie: cookieHeader(session.cookies),
           Accept: 'application/json',
           Origin: cfg.websiteUrl,
@@ -400,7 +400,7 @@ export function createGenericAdapter(cfg: GenericAdapterConfig): ProviderAdapter
         try {
           const resp = await fetch(validationUrl, {
             headers: {
-              ...BROWSER_HEADERS,
+              ...browserHeaders(session),
               Cookie: cookieHeader(session.cookies),
               Origin: cfg.websiteUrl,
               Referer: cfg.websiteUrl + '/',

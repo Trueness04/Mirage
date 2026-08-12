@@ -15,7 +15,7 @@ import {
   waitForToolJob,
 } from '@/lib/tools/local'
 import {
-  BROWSER_HEADERS,
+  browserHeaders,
   type AdapterSessionContext,
   type CookieJarEntry,
   type OpenAIChatRequest,
@@ -23,6 +23,7 @@ import {
   findCookie,
 } from './base'
 import { ensureQwenWafCookies } from './qwen-waf'
+import { notifyCaptchaRequired } from '@/lib/notify'
 import { resolveQwenUpstreamModel } from './qwen-catalog'
 
 const CHAT_QWEN = 'https://chat.qwen.ai'
@@ -139,9 +140,10 @@ export function buildQwenIntlHeaders(opts: {
   token: string
   cookies: CookieJarEntry[]
   chatId?: string
+  session?: AdapterSessionContext
 }): Record<string, string> {
   const headers: Record<string, string> = {
-    ...BROWSER_HEADERS,
+    ...browserHeaders(opts.session),
     Accept: '*/*',
     'Content-Type': 'application/json',
     Origin: CHAT_QWEN,
@@ -229,6 +231,7 @@ async function createIntlChatId(opts: {
   const headers = buildQwenIntlHeaders({
     token: opts.token,
     cookies: opts.cookies,
+    session: opts.session,
   })
   const res = await browserJson({
     url: CHATS_NEW,
@@ -291,7 +294,9 @@ export async function buildQwenIntlUpstream(
     })
   } catch (e) {
     // Still attempt viaBrowser — live BaXia often works without harvested bx-*.
-    console.warn('[qwen-intl] waf warmup:', (e as Error).message)
+    const msg = (e as Error).message
+    console.warn('[qwen-intl] waf warmup:', msg)
+    notifyCaptchaRequired('Qwen', `WAF warmup failed: ${msg}`)
   }
 
   const token = extractQwenIntlToken({ ...session, cookies })

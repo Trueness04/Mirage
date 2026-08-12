@@ -6,6 +6,7 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: true,
   },
   reactStrictMode: false,
+  serverExternalPackages: ['@prisma/client', '.prisma/client'],
   // OpenAI-compatible clients use base_url .../v1 — map to App Router /api/v1/*
   async rewrites() {
     return [

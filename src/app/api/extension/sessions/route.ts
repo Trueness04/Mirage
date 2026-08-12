@@ -52,6 +52,11 @@ export async function POST(req: Request) {
   const deviceId = auth.device.deviceId
   const cookies: CookieJarEntry[] = Array.isArray(body.cookies) ? body.cookies : []
   const browser = normalizeBrowser(body.browser || auth.device)
+  // Capture real browser User-Agent (extension sends it in body, fallback to HTTP header)
+  const userAgent: string | null =
+    (typeof body.userAgent === 'string' && body.userAgent.trim()) ||
+    req.headers.get('user-agent') ||
+    null
   const label =
     body.label != null && String(body.label).trim()
       ? String(body.label).trim()
@@ -140,6 +145,7 @@ export async function POST(req: Request) {
       incomingRefresh || existingFull?.refreshToken || null,
     deviceId,
     browser,
+    userAgent: userAgent || existingFull?.userAgent || null,
     priority,
     label,
     expiresAt,

@@ -16,7 +16,7 @@
  */
 
 import {
-  BROWSER_HEADERS,
+  browserHeaders,
   type AdapterModelSpec,
   type AdapterSessionContext,
   type ChatCompletionResponse,
@@ -176,7 +176,7 @@ export const kimiAdapter: ProviderAdapter = {
     }
 
     const authHeaders = {
-      ...BROWSER_HEADERS,
+      ...browserHeaders(session),
       'Content-Type': 'application/json',
       Authorization: `Bearer ${token}`,
       Origin: KIMI_BASE,
@@ -437,7 +437,7 @@ export const kimiAdapter: ProviderAdapter = {
         const resp = await fetch(KIMI_REFRESH, {
           method: 'GET',
           headers: {
-            ...BROWSER_HEADERS,
+            ...browserHeaders(session),
             Authorization: `Bearer ${refreshToken}`,
             Origin: KIMI_BASE,
             Referer: `${KIMI_BASE}/`,
@@ -476,7 +476,7 @@ export const kimiAdapter: ProviderAdapter = {
         const resp = await fetch(KIMI_REFRESH_LEGACY, {
           method: 'POST',
           headers: {
-            ...BROWSER_HEADERS,
+            ...browserHeaders(session),
             'Content-Type': 'application/json',
             Authorization: `Bearer ${refreshToken}`,
             Origin: KIMI_BASE,
@@ -595,7 +595,7 @@ export const kimiAdapter: ProviderAdapter = {
     }
     try {
       const headers = {
-        ...BROWSER_HEADERS,
+        ...browserHeaders(session),
         Authorization: `Bearer ${token}`,
         Cookie: cookieHeader(session.cookies),
         Origin: KIMI_BASE,
@@ -849,7 +849,7 @@ async function kimiAuthHeaders(
   const token = session.accessToken || extractAccessToken(session.cookies)
   if (!token) throw new Error('Kimi session has no access_token')
   return {
-    ...BROWSER_HEADERS,
+    ...browserHeaders(session),
     'Content-Type': 'application/json',
     Authorization: `Bearer ${token}`,
     Origin: KIMI_BASE,

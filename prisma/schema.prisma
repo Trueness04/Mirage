@@ -74,6 +74,7 @@ model ProviderSession {
   label         String?  // user-assigned nickname e.g. "Personal Kimi"
   deviceId      String?  // ExtensionDevice.deviceId that captured this session
   browser       String?  // chrome | edge | firefox | other
+  userAgent     String?  // full User-Agent string from the capturing browser
   // 0 = primary, 1 = fallback (lower runs first)
   priority      Int      @default(0)
   // JSON-encoded cookie jar captured by the extension (array of {name, value, domain, path, expires, ...})

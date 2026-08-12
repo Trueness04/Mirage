@@ -12,7 +12,7 @@
 
 import { db } from '@/lib/db'
 import {
-  BROWSER_HEADERS,
+  browserHeaders,
   type AdapterModelSpec,
   type AdapterSessionContext,
   type ChatCompletionResponse,
@@ -561,10 +561,7 @@ function claudeHeaders(session: AdapterSessionContext): Record<string, string> {
   const deviceId =
     findCookie(session.cookies, 'anthropic-device-id')?.value || crypto.randomUUID()
   return {
-    ...BROWSER_HEADERS,
-    'User-Agent':
-      'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-      '(KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36',
+    ...browserHeaders(session),
     Cookie: cookieHeader(session.cookies),
     Origin: CLAUDE,
     Referer: `${CLAUDE}/`,

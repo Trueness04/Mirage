@@ -10,7 +10,7 @@
 
 import { db } from '@/lib/db'
 import {
-  BROWSER_HEADERS,
+  browserHeaders,
   type AdapterModelSpec,
   type AdapterSessionContext,
   type ChatCompletionResponse,
@@ -195,7 +195,7 @@ export const dolaAdapter: ProviderAdapter = {
       method: 'POST',
       stream: true,
       headers: {
-        ...BROWSER_HEADERS,
+        ...browserHeaders(session),
         Accept: 'text/event-stream',
         'Content-Type': 'application/json',
         Origin: DOLA,
